@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { X, ExternalLink, AlertCircle, CheckCircle, FileText, Download, Image as ImageIcon, HelpCircle } from 'lucide-react';
 import { Lesson } from '../types';
 import Comments from './Comments';
 import { supabase } from '../supabaseClient';
-import QuizPlayer from './QuizPlayer'; // <--- Импортируем плеер тестов
+import QuizPlayer from './QuizPlayer';
 
 interface LessonPlayerProps {
   lesson: Lesson | null;
@@ -28,20 +28,13 @@ export default function LessonPlayer({ lesson, onClose, onComplete, isCompleted 
     getUser();
   }, []);
 
-  if (!lesson) return null;
-
-  const url = lesson.content_link || '';
-
-  // --- ОПРЕДЕЛЕНИЕ ТИПА КОНТЕНТА ---
-  const getContentType = (lesson: Lesson) => {
-      // 1. Если есть данные теста - это тест
-      if (lesson.quiz_data && Array.isArray(lesson.quiz_data) && lesson.quiz_data.length > 0) {
-          return 'quiz';
-      }
-
+  // Мемоизируем тип контента, чтобы он не пересчитывался лишний раз
+  const type = useMemo(() => {
+      if (!lesson) return 'empty';
+      if (lesson.quiz_data && Array.isArray(lesson.quiz_data) && lesson.quiz_data.length > 0) return 'quiz';
+      
       const link = lesson.content_link || '';
       if (!link) return 'empty';
-      
       if (link.includes('youtube.com') || link.includes('youtu.be')) return 'youtube';
       
       const lower = link.toLowerCase();
@@ -49,12 +42,13 @@ export default function LessonPlayer({ lesson, onClose, onComplete, isCompleted 
       if (lower.match(/\.pdf$/)) return 'pdf';
       if (lower.includes('course_materials')) return 'file'; 
       
-      return 'website'; 
-  };
+      return 'website';
+  }, [lesson]);
 
-  const type = getContentType(lesson);
+  if (!lesson) return null;
 
-  // Хелпер для YouTube
+  const url = lesson.content_link || '';
+
   const getEmbedUrl = (link: string) => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = link.match(regExp);
@@ -66,8 +60,8 @@ export default function LessonPlayer({ lesson, onClose, onComplete, isCompleted 
       switch (type) {
           case 'quiz':
               return (
-                  <div className="w-full h-full overflow-y-auto bg-gray-50 p-4">
-                      <div className="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow-sm">
+                  <div className="w-full min-h-full bg-gray-50 p-4">
+                      <div className="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow-sm mb-10">
                           <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Проверка знаний</h2>
                           <QuizPlayer 
                               questions={lesson.quiz_data} 
@@ -89,7 +83,7 @@ export default function LessonPlayer({ lesson, onClose, onComplete, isCompleted 
               return (
                 <iframe 
                     src={getEmbedUrl(url)} 
-                    className="w-full h-full border-0"
+                    className="absolute inset-0 w-full h-full border-0"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                     allowFullScreen
                     title="YouTube"
@@ -98,19 +92,19 @@ export default function LessonPlayer({ lesson, onClose, onComplete, isCompleted 
 
           case 'image':
               return (
-                  <div className="w-full h-full flex items-center justify-center bg-black">
+                  <div className="w-full min-h-full flex items-center justify-center bg-black p-4">
                       <img src={url} alt="Lesson material" className="max-h-full max-w-full object-contain" />
                   </div>
               );
 
           case 'pdf':
               return (
-                  <iframe src={url} className="w-full h-full border-0" title="PDF Viewer" />
+                  <iframe src={url} className="absolute inset-0 w-full h-full border-0" title="PDF Viewer" />
               );
 
           case 'file':
               return (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                  <div className="w-full h-full flex items-center justify-center bg-gray-50 p-4">
                       <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-sm">
                           <div className="w-16 h-16 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center mx-auto mb-4">
                               <FileText size={32} />
@@ -134,25 +128,30 @@ export default function LessonPlayer({ lesson, onClose, onComplete, isCompleted 
               return (
                 <iframe 
                     src={url} 
-                    className="w-full h-full border-0"
+                    className="absolute inset-0 w-full h-full border-0"
                     title="Website"
+                    loading="lazy"
                 />
               );
       }
   };
 
+  // Определяем, нужен ли скролл контейнеру
+  const isScrollable = type === 'quiz' || type === 'file' || type === 'image';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-7xl h-[90vh] rounded-lg shadow-2xl flex flex-col overflow-hidden">
+    // h-[100dvh] фиксит высоту на мобилках с плавающей строкой адреса
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-7xl h-[100dvh] sm:h-[90vh] sm:rounded-lg shadow-2xl flex flex-col overflow-hidden">
         
         {/* Шапка */}
-        <div className="flex justify-between items-center p-4 border-b bg-gray-50 shrink-0">
+        <div className="flex justify-between items-center p-3 sm:p-4 border-b bg-gray-50 shrink-0 z-10">
           <div>
-             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                 {type === 'quiz' && <HelpCircle size={18} className="text-purple-600"/>}
-                 {type === 'file' && <FileText size={16} className="text-gray-500"/>}
-                 {lesson.title}
-                 {isCompleted && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1"><CheckCircle size={12}/> Выполнено</span>}
+             <h3 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2 truncate max-w-[200px] sm:max-w-md">
+                 {type === 'quiz' && <HelpCircle size={18} className="text-purple-600 shrink-0"/>}
+                 {type === 'file' && <FileText size={16} className="text-gray-500 shrink-0"/>}
+                 <span className="truncate">{lesson.title}</span>
+                 {isCompleted && <span className="hidden sm:flex text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full items-center gap-1 shrink-0"><CheckCircle size={12}/> Выполнено</span>}
              </h3>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition">
@@ -160,42 +159,44 @@ export default function LessonPlayer({ lesson, onClose, onComplete, isCompleted 
           </button>
         </div>
 
-        {/* ТЕЛО: 2 колонки */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-gray-100">
+        {/* ТЕЛО: 2 колонки (Мобилка: Контент сверху, Чат снизу) */}
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-gray-100 relative">
             
             {/* Левая часть: КОНТЕНТ */}
-            <div className="flex-1 flex flex-col relative border-r border-gray-200">
-                <div className="flex-1 relative overflow-hidden">
+            <div className={`flex-1 flex flex-col relative border-r border-gray-200 ${type === 'quiz' ? 'bg-gray-50' : ''}`}>
+                
+                {/* Контейнер контента */}
+                <div className={`flex-1 relative w-full ${isScrollable ? 'overflow-y-auto -webkit-overflow-scrolling-touch' : 'overflow-hidden'}`}>
                     {renderContent()}
                 </div>
                 
-                {/* Футер */}
-                {type !== 'quiz' && ( // У теста своя кнопка завершения внутри
-                    <div className="p-4 bg-white border-t flex justify-between items-center shrink-0">
+                {/* Футер (Только для НЕ тестов) */}
+                {type !== 'quiz' && (
+                    <div className="p-3 sm:p-4 bg-white border-t flex justify-between items-center shrink-0 z-10">
                         <div className="text-xs text-gray-500">
                             {url && (
                                 <a href={url} target="_blank" rel="noreferrer" className="hover:underline flex items-center gap-1">
-                                    <ExternalLink size={12}/> Открыть оригинал
+                                    <ExternalLink size={12}/> <span className="hidden sm:inline">Открыть оригинал</span><span className="sm:hidden">Ссылка</span>
                                 </a>
                             )}
                         </div>
                         <button 
                             onClick={() => onComplete(lesson.id)}
                             disabled={isCompleted}
-                            className={`flex items-center gap-2 px-6 py-2 rounded font-medium transition ${
+                            className={`flex items-center gap-2 px-4 sm:px-6 py-2 rounded font-medium transition text-sm sm:text-base ${
                                 isCompleted 
                                 ? 'bg-green-100 text-green-700 cursor-default' 
-                                : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl'
+                                : 'bg-green-600 hover:bg-green-700 text-white shadow-lg'
                             }`}
                         >
-                            {isCompleted ? <><CheckCircle size={18}/> Урок пройден</> : 'Завершить урок'}
+                            {isCompleted ? <><CheckCircle size={18}/> <span className="hidden sm:inline">Урок пройден</span><span className="sm:hidden">Сдано</span></> : 'Завершить'}
                         </button>
                     </div>
                 )}
             </div>
 
-            {/* Правая часть: ЧАТ */}
-            <div className="w-full lg:w-[350px] bg-white h-1/2 lg:h-full flex flex-col border-t lg:border-t-0">
+            {/* Правая часть: ЧАТ (на мобилках скрыт или уменьшен) */}
+            <div className="w-full lg:w-[350px] bg-white h-[40%] lg:h-full flex flex-col border-t lg:border-t-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] lg:shadow-none z-20">
                 <Comments 
                     lessonId={lesson.id} 
                     currentUserId={currentUserId}
